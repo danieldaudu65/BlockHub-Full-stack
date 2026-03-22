@@ -1,0 +1,28 @@
+
+export const All_Skills = [
+  'Solidity', 
+  'Rust', 
+  'JavaScript', 
+  'TypeScript', 
+  'React', 
+  'Vue', 
+  'Node.js',
+  'UI/UX Designer', 
+  'Product Manager', 
+  'Smart Contract Development', 
+  'Full-Stack Developer',
+  'Frontend Developer', 
+  'Backend Developer', 
+  'Blockchain Engineer', 
+  'Web3 Expert',
+  'DeFi', 
+  'NFTs', 
+  'DAOs', 
+  'Layer1', 
+  'Layer2',
+  'Graphic designer',
+  '3D designer',
+  'UI/UX designer',
+  'Digital illustration',
+  'Poster Designer'
+];

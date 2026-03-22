@@ -1,0 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap');
+@import "tailwindcss";
+
+
+* {
+  box-sizing: border-box;
+  font-family: "Plus Jakarta Sans", sans-serif;
+
+}
+body{
+  overflow-x: hidden;
+}
+
+@theme {
+  --color-blue-main: #3401CC;
+  --color-white-main: #A4A6AA;
+  --color-secondary-main: #A28AE8;
+  --color-faded-gray: #1F2227;
+}
+
+/* Slimmer scrollbar */
+/* Ultra-slim blue transparent scrollbar */
+.slim-scrollbar {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(0, 123, 255, 0.4) transparent; /* Firefox */
+}
+
+.slim-scrollbar::-webkit-scrollbar {
+  width: 2px;  /* ultra slim vertical scrollbar */
+  height: 2px; /* ultra slim horizontal scrollbar */
+}
+
+.slim-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.slim-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 123, 255, 0.4); /* light transparent blue */
+  border-radius: 10px;
+}
+
+.slim-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 123, 255, 0.7); /* slightly darker on hover */
+}
+

@@ -1,0 +1,331 @@
+import React, { useState, useRef, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { BsArrowLeft } from "react-icons/bs";
+import { Img as Image } from "react-image";
+import { API_URL } from "../../../../confiq";
+import { io, Socket } from "socket.io-client";
+import type { Participant } from "../../../../types/Perticipants";
+import type { Message } from "../../../../types/Message";
+import CLiploader from "../../../../components/CLiploader";
+import { file, send } from "../../../../assets";
+
+interface Chat {
+  _id: string;
+  participants: Participant[];
+  createdAt: string;
+  updatedAt: string;
+  job: string;
+  lastMessage: string | null;
+  lastMessageTime?: string;
+  __v?: number;
+}
+
+interface ConversationResponse {
+  chat: Chat;
+  lastMessage: Message | null;
+}
+
+const ChatRoom: React.FC = () => {
+  const { id: chatId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [partner, setPartner] = useState<Participant | null>(null);
+  const [newMessage, setNewMessage] = useState<string>("");
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  // const [userImage, setUserImage] = useState<string | null>(null);
+
+  const currentUserId = localStorage.getItem("user_id") ?? "";
+  const socketRef = useRef<Socket | null>(null);
+
+  const [currentUser, setCurrentUser] = useState({
+    _id: currentUserId,
+    fullName: localStorage.getItem("user_name") || "Unknown",
+    profileImage: localStorage.getItem("user_image") || "default-image-url",
+  });
+
+  useEffect(() => {
+    const fullName = localStorage.getItem("user_name");
+    const profileImage = localStorage.getItem("user_image");
+    console.log("From local:", localStorage.getItem("user_image"));
+
+
+    setCurrentUser({
+      _id: currentUserId,
+      fullName: fullName || "Unknown",
+      profileImage: profileImage || "default-image-url",
+    });
+  }, [currentUserId, localStorage.getItem("user_image")]);
+
+
+
+  // ✅ Setup socket connection once
+  useEffect(() => {
+    if (!chatId) return;
+
+    if (!socketRef.current) {
+      socketRef.current = io(API_URL, { transports: ["websocket"] });
+    }
+    const socket = socketRef.current;
+
+    // Join chat room
+    socket.emit("joinChat", chatId);
+
+    // Receive new messages
+    socket.on("receiveMessage", (msg: Message) => {
+      setMessages((prev) => [...prev, msg]);
+    });
+
+    return () => {
+      socket.off("receiveMessage");
+    };
+
+  }, [chatId]);
+  useEffect(() => {
+    return () => {
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+    };
+  }, []);
+
+
+  // ✅ Load chat & messages
+  useEffect(() => {
+    if (!chatId) return;
+
+    const token = localStorage.getItem("token");
+
+    // Fetch chat details
+    fetch(`${API_URL}/user_activity/conversation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chatId, token }),
+    })
+      .then((res) => res.json())
+      .then((data: ConversationResponse) => {
+        const otherUser = data.chat.participants.find(
+          (p) => p._id !== currentUserId
+        );
+        setPartner(otherUser || null);
+      })
+      .catch((err) => console.error("Failed to load conversation:", err));
+
+    // Fetch chat messages
+    fetch(`${API_URL}/user_activity/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chatId, token }),
+    })
+      .then((res) => res.json())
+      .then((msgs: Message[]) => {
+        setMessages(msgs);
+      })
+      .catch((err) => console.error("Failed to load messages:", err));
+  }, [chatId, currentUserId]);
+
+  // ✅ Auto scroll
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // ✅ Send text message
+  const handleSendMessage = () => {
+    if (!newMessage.trim() || !chatId) return;
+
+    const messageData = {
+      chatId,
+      sender: currentUserId, // backend expects userId only
+      content: newMessage,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Optimistic UI
+    setMessages((prev) => [
+      ...prev,
+      {
+        ...messageData,
+        sender: {
+          _id: currentUserId,
+          fullName: currentUser.fullName,
+          profileImage: currentUser.profileImage,
+        },
+      } as Message,
+    ]);
+
+
+    socketRef.current?.emit("sendMessage", messageData);
+    setNewMessage("");
+  };
+
+  // ✅ Send file message
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileObj = e.target.files?.[0];
+    if (!fileObj || !chatId) return;
+
+    const newFileMsg = {
+      chatId,
+      sender: currentUserId,
+      content: "",
+      file: {
+        name: fileObj.name,
+        size: fileObj.size,
+        type: fileObj.type.split("/")[1]?.toUpperCase() || "FILE",
+      },
+      createdAt: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [
+      ...prev,
+      { ...newFileMsg, sender: currentUser } as Message,
+    ]);
+
+    socketRef.current?.emit("sendMessage", newFileMsg);
+  };
+
+  if (!partner) {
+    return <CLiploader />;
+  }
+
+  // ✅ Safe sender check
+  const isMyMessage = (message: Message) => {
+    if (!message.sender) return false;
+    if (typeof message.sender === "string") {
+      return message.sender === currentUserId;
+    }
+    return message.sender._id === currentUserId;
+  };
+  return (
+    <div className="flex flex-col h-screen bg-[#0d0d0d] text-white">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 bg-[#181819] border-b border-neutral-800">
+        <div
+          className="flex items-center gap-4 cursor-pointer"
+          onClick={() => navigate(-1)}
+        >
+          <BsArrowLeft size={24} />
+          <Image src={partner.profileImage} className="w-10 h-10 rounded-full" />
+          <div className="flex flex-col">
+            <h2 className="text-lg font-semibold">{partner.fullName}</h2>
+            <p className="text-sm text-gray-400">
+              @{partner.fullName.replace(/\s+/g, '').toLowerCase()}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.map((message) => (
+          <div
+            className={`flex ${isMyMessage(message) ? 'justify-start' : 'justify-start'
+              }`}
+          >
+            <div
+              className={`flex px-2 items-start gap-2 ${isMyMessage(message) ? 'flex-row' : 'flex-row'
+                }`}
+            >
+              {!isMyMessage(message) && (
+                <Image src={partner.profileImage} className="w-10 h-10 rounded-full" />
+              )}
+
+              {isMyMessage(message) && (
+                <Image
+                  src={currentUser.profileImage || '/default-avatar.png'}
+                  className="w-10 h-10 rounded-full"
+                />)}
+              <div className='ml-2'>
+                <div className='flex  gap-3 items-center'>
+                  <p className=' text-sm text-white/70'>{!isMyMessage ? partner.fullName : message.sender?.fullName}</p>
+                  <span
+                    className={`block text-right text-[10px] text-white/30  ${isMyMessage(message) ? 'text-gray-200' : 'text-gray-400'}`}
+                  >
+                    {message.createdAt
+                      ? new Date(message.createdAt).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                      : ''}
+                  </span>
+                </div>
+                <div
+                  className={`py-2 -mt-1 rounded-xl max ${isMyMessage(message)
+                    ? 'bg[#181A1D] text-white/50 ounded-tr-none'
+                    : 'bg[#181A1D] text-white/50 rounded-tl-none'
+                    }`}
+                >
+
+                  {message.file ? (
+                    <div className="flex items-center gap-2 p-2 bg-neutral-900 rounded-lg border border-neutral-700">
+                      <div className="bg-purple-600 p-2 rounded-md">
+                        <span className="text-white text-xs font-bold">
+                          {message.file.type}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{message.file.name}</p>
+                        <p className="text-xs text-gray-400">
+                          {(message.file.size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                      </div>
+
+                    </div>
+                  ) : (
+                    <p className="whitespace-pre-wrap">{message.content}</p>
+                  )}
+
+
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input */}
+      <div className="p-4 px-6 bg-[#181819] border-t border-neutral-800">
+        <div className="flex items-center bg-[#141414] rounded-lg  gap-2">
+
+          <input
+            type="text"
+            className="flex-1 p-3 bg-neutral-900 text-gray-300 rounded-xl focus:outline-none"
+            placeholder="Type your message"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+          />
+          <label className="cursor-pointer">
+            {/* <RiAttachmentLine
+              size={24}
+              className="text-gray-400 hover:text-gray-200"
+            /> */}
+
+            <img src={file} className='w-6 mr-1' alt="" />
+            <input
+              type="file"
+              className="hidden"
+              onChange={handleFileUpload}
+            />
+          </label>
+          {/* <button
+            onClick={handleSendMessage}
+            className="p-2 text-white bg-blue-main rounded-full"
+          >
+
+            <RiSendPlane2Fill size={20} />
+          </button> */}
+
+          <div onClick={handleSendMessage}>
+
+            <img src={send} alt="" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ChatRoom;
